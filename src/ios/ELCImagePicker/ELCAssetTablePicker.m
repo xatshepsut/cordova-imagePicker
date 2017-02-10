@@ -9,6 +9,7 @@
 #import "ELCAssetCell.h"
 #import "ELCAsset.h"
 #import "ELCAlbumPickerController.h"
+#import "ELCConsole.h"
 
 @interface ELCAssetTablePicker ()
 
@@ -44,16 +45,26 @@
     } else {
         UIBarButtonItem *doneButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(doneAction:)];
         [self.navigationItem setRightBarButtonItem:doneButtonItem];
-        [self.navigationItem setTitle:@"Loading..."];
+        [self.navigationItem setTitle:NSLocalizedString(@"Loading...", nil)];
     }
 
 	[self performSelectorInBackground:@selector(preparePhotos) withObject:nil];
+    
+    // Register for notifications when the photo library has changed
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(preparePhotos) name:ALAssetsLibraryChangedNotification object:nil];
 }
 
 - (void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
     self.columns = self.view.bounds.size.width / 80;
+}
+
+- (void)viewWillDisappear:(BOOL)animated
+{
+    [super viewWillDisappear:animated];
+    [[ELCConsole mainConsole] removeAllIndex];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:ALAssetsLibraryChangedNotification object:nil];
 }
 
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation
@@ -71,13 +82,14 @@
 - (void)preparePhotos
 {
     @autoreleasepool {
-
+        
+        [self.elcAssets removeAllObjects];
         [self.assetGroup enumerateAssetsUsingBlock:^(ALAsset *result, NSUInteger index, BOOL *stop) {
             
             if (result == nil) {
                 return;
             }
-
+            
             ELCAsset *elcAsset = [[ELCAsset alloc] initWithAsset:result];
             [elcAsset setParent:self];
             
@@ -107,10 +119,11 @@
                                                       animated:NO];
             }
             
-            [self.navigationItem setTitle:self.singleSelection ? @"Pick Photo" : @"Pick Photos"];
+            [self.navigationItem setTitle:self.singleSelection ? NSLocalizedString(@"Pick Photo", nil) : NSLocalizedString(@"Pick Photos", nil)];
         });
     }
 }
+
 
 - (void)doneAction:(id)sender
 {	
@@ -118,9 +131,12 @@
 	    
 	for (ELCAsset *elcAsset in self.elcAssets) {
 		if ([elcAsset selected]) {
-			[selectedAssetsImages addObject:[elcAsset asset]];
+			[selectedAssetsImages addObject:elcAsset];
 		}
 	}
+    if ([[ELCConsole mainConsole] onOrder]) {
+        [selectedAssetsImages sortUsingSelector:@selector(compareWithIndex:)];
+    }
     [self.parent selectedAssets:selectedAssetsImages];
 }
 
@@ -149,8 +165,58 @@
         }
     }
     if (self.immediateReturn) {
+        NSArray *singleAssetArray = @[asset];
+        [(NSObject *)self.parent performSelector:@selector(selectedAssets:) withObject:singleAssetArray afterDelay:0];
+    }
+}
+
+- (BOOL)shouldDeselectAsset:(ELCAsset *)asset
+{
+    if (self.immediateReturn){
+        return NO;
+    }
+    return YES;
+}
+
+- (void)assetDeselected:(ELCAsset *)asset
+{
+    if (self.singleSelection) {
+        for (ELCAsset *elcAsset in self.elcAssets) {
+            if (asset != elcAsset) {
+                elcAsset.selected = NO;
+            }
+        }
+    }
+
+    if (self.immediateReturn) {
         NSArray *singleAssetArray = @[asset.asset];
         [(NSObject *)self.parent performSelector:@selector(selectedAssets:) withObject:singleAssetArray afterDelay:0];
+    }
+    
+    int numOfSelectedElements = [[ELCConsole mainConsole] numOfSelectedElements];
+    if (asset.index < numOfSelectedElements - 1) {
+        NSMutableArray *arrayOfCellsToReload = [[NSMutableArray alloc] initWithCapacity:1];
+        
+        for (int i = 0; i < [self.elcAssets count]; i++) {
+            ELCAsset *assetInArray = [self.elcAssets objectAtIndex:i];
+            if (assetInArray.selected && (assetInArray.index > asset.index)) {
+                assetInArray.index -= 1;
+                
+                int row = i / self.columns;
+                NSIndexPath *indexPath = [NSIndexPath indexPathForRow:row inSection:0];
+                BOOL indexExistsInArray = NO;
+                for (NSIndexPath *indexInArray in arrayOfCellsToReload) {
+                    if (indexInArray.row == indexPath.row) {
+                        indexExistsInArray = YES;
+                        break;
+                    }
+                }
+                if (!indexExistsInArray) {
+                    [arrayOfCellsToReload addObject:indexPath];
+                }
+            }
+        }
+        [self.tableView reloadRowsAtIndexPaths:arrayOfCellsToReload withRowAnimation:UITableViewRowAnimationNone];
     }
 }
 

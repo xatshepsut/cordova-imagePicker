@@ -10,6 +10,7 @@
 #import "ELCAlbumPickerController.h"
 #import "ELCImagePickerController.h"
 #import "ELCAssetTablePicker.h"
+#import <MobileCoreServices/MobileCoreServices.h>
 
 #define CDV_PHOTO_PREFIX @"cdv_photo_"
 
@@ -18,30 +19,23 @@
 @synthesize callbackId;
 
 - (void) getPictures:(CDVInvokedUrlCommand *)command {
-	NSDictionary *options = [command.arguments objectAtIndex: 0];
+  NSDictionary *options = [command.arguments objectAtIndex: 0];
 
-	NSInteger maximumImagesCount = [[options objectForKey:@"maximumImagesCount"] integerValue];
-	self.width = [[options objectForKey:@"width"] integerValue];
-	self.height = [[options objectForKey:@"height"] integerValue];
-	self.quality = [[options objectForKey:@"quality"] integerValue];
+  NSInteger maximumImagesCount = [[options objectForKey:@"maximumImagesCount"] integerValue];
+  self.width = [[options objectForKey:@"width"] integerValue];
+  self.height = [[options objectForKey:@"height"] integerValue];
+  self.quality = [[options objectForKey:@"quality"] integerValue];
 
-	// Create the an album controller and image picker
-	ELCAlbumPickerController *albumController = [[ELCAlbumPickerController alloc] init];
-	
-	if (maximumImagesCount == 1) {
-      albumController.immediateReturn = true;
-      albumController.singleSelection = true;
-   } else {
-      albumController.immediateReturn = false;
-      albumController.singleSelection = false;
-   }
-   
-   ELCImagePickerController *imagePicker = [[ELCImagePickerController alloc] initWithRootViewController:albumController];
-   imagePicker.maximumImagesCount = maximumImagesCount;
-   imagePicker.returnsOriginalImage = 1;
-   imagePicker.imagePickerDelegate = self;
+  // Create the an album controller and image picker
+  ELCAlbumPickerController *albumController = [[ELCAlbumPickerController alloc] init];
+  
+  ELCImagePickerController *imagePicker = [[ELCImagePickerController alloc] initWithRootViewController:albumController];
+  imagePicker.maximumImagesCount = maximumImagesCount;
+  imagePicker.returnsOriginalImage = 1;
+  imagePicker.mediaTypes = @[(NSString *)kUTTypeImage];
+  imagePicker.imagePickerDelegate = self;
 
-   albumController.parent = imagePicker;
+  albumController.parent = imagePicker;
 	self.callbackId = command.callbackId;
 	// Present modally
 	[self.viewController presentViewController:imagePicker
